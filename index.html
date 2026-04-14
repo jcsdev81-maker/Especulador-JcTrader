@@ -1721,8 +1721,16 @@ setTimeout(()=>{
 
 // ═══ CHAMADA GEMINI (direta ou via proxy) ═══
 async function callGemini(systemPrompt,messages,maxTokens){
+  function friendlyError(status,msg){
+    var m=(msg||'').toLowerCase();
+    if(status===503||m.indexOf('high demand')>-1||m.indexOf('overloaded')>-1)return '⏳ Servidor IA ocupado. Tente novamente em 30 segundos.';
+    if(status===429||m.indexOf('rate limit')>-1||m.indexOf('quota')>-1)return '⏳ Limite de requisições atingido. Aguarde 1 minuto.';
+    if(status===400&&(m.indexOf('api key')>-1||m.indexOf('invalid')>-1))return '🔑 Chave Gemini inválida. Verifique nas configurações.';
+    if(status===400&&m.indexOf('too large')>-1)return '📏 Prompt muito grande. Limpe o histórico e tente novamente.';
+    if(m.indexOf('timeout')>-1||m.indexOf('aborted')>-1)return '⏱️ Timeout — a IA demorou demais. Tente novamente.';
+    return null;
+  }
   if(geminiKey){
-    // CHAMADA DIRETA à API Gemini
     const url='https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key='+geminiKey;
     const body={
       system_instruction:{parts:[{text:systemPrompt}]},
@@ -1732,17 +1740,22 @@ async function callGemini(systemPrompt,messages,maxTokens){
     const res=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     if(!res.ok){
       const err=await res.json().catch(()=>({}));
-      throw new Error('Gemini '+(err.error?.message||res.status));
+      var errMsg=err.error?.message||''+res.status;
+      var friendly=friendlyError(res.status,errMsg);
+      throw new Error(friendly||'Gemini '+errMsg);
     }
     const data=await res.json();
     if(data.candidates?.[0])return data.candidates[0].content?.parts?.[0]?.text||'';
     throw new Error('Sem resposta do Gemini');
   }else{
-    // VIA PROXY (fallback)
     const payload={system:systemPrompt,messages:messages.map(m=>({role:m.role==='assistant'?'model':'user',parts:[{text:m.content||m.parts?.[0]?.text||''}]})),max_tokens:maxTokens||8000};
     const proxy=getProxy();
     const res=await fetch(proxy,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
-    if(!res.ok)throw new Error('HTTP '+res.status);
+    if(!res.ok){
+      var errTxt=await res.text().catch(()=>'');
+      var friendly=friendlyError(res.status,errTxt);
+      throw new Error(friendly||'Proxy erro '+res.status);
+    }
     const data=await res.json();
     if(data.content?.[0]?.text)return data.content[0].text;
     if(data.candidates?.[0])return data.candidates[0].content?.parts?.[0]?.text||'';
@@ -3900,7 +3913,7 @@ function getBN(){return BN_URLS[bnMode]}
     if(c.tgC)setTimeout(()=>{document.getElementById('tgChat').value=c.tgC},100);
   }catch(e){}
   try{tradeHistory=JSON.parse(localStorage.getItem('esp_history')||'[]')}catch(e){tradeHistory=[]}
-  setTimeout(()=>{updateDashboard();renderHistory()},200);
+  setTimeout(()=>{updateTradeDashboard();renderHistory()},200);
 })();
 
 function saveTradeCfg(){try{localStorage.setItem('esp_trade',JSON.stringify({mode:bnMode,k:bnKey,s:bnSec,tgT:document.getElementById('tgToken').value,tgC:document.getElementById('tgChat').value}))}catch(e){}}
@@ -4021,7 +4034,7 @@ async function placeOrder(side){
     if(document.getElementById('tgTP').classList.contains('on')){
       pos.tps=[{pct:parseFloat(document.getElementById('tp1a').value),close:parseFloat(document.getElementById('tp1c').value)/100},{pct:parseFloat(document.getElementById('tp2a').value),close:parseFloat(document.getElementById('tp2c').value)/100},{pct:parseFloat(document.getElementById('tp3a').value),close:parseFloat(document.getElementById('tp3c').value)/100}];
     }
-    positions.push(pos);renderPos();refreshBal();updateDashboard();
+    positions.push(pos);renderPos();refreshBal();updateTradeDashboard();
     sendTG('📈 '+side+' '+pair+'\nPreço: '+fp.toFixed(2)+'\nQtd: $'+qtyUsdt.toFixed(2)+'\n#'+res.orderId);
   }catch(e){tlog('ERRO','Falha: '+e.message,'lw')}
 }
@@ -4049,7 +4062,7 @@ async function monitorPos(){
       if(p.tps){for(let t=0;t<p.tps.length;t++){if(p.tpHits[t])continue;const tp=p.tps[t];const tpP=p.side==='BUY'?p.entry*(1+tp.pct/100):p.entry*(1-tp.pct/100);const hit=p.side==='BUY'?cp>=tpP:cp<=tpP;if(hit){p.tpHits[t]=true;const pnlUsd=p.qtyUsdt*tp.close*(p.pnl/100);recordTrade(p,'TP'+(t+1),pnlUsd);await closePos(p,tp.close,'🎯 TP'+(t+1));p.qty*=(1-tp.close);p.qtyUsdt*=(1-tp.close);if(p.qty<=0.000001){positions.splice(i,1);break}}}}
     }catch(e){}
   }
-  renderPos();updateDashboard();
+  renderPos();updateTradeDashboard();
 }
 
 function recordTrade(p,reason,pnlUsd){
@@ -4069,10 +4082,10 @@ async function killSwitch(){
   tlog('🚨 KILL','Executando...','lw');sendTG('🚨 KILL SWITCH');
   for(const pair of[...new Set(positions.map(p=>p.pair))]){try{await bnReq('/api/v3/openOrders',{symbol:pair},'DELETE')}catch(e){}}
   for(const p of positions){recordTrade(p,'KILL',p.qtyUsdt*(p.pnl/100));await closePos(p,1,'KILL')}
-  positions=[];renderPos();refreshBal();updateDashboard();tlog('KILL','Tudo fechado','lr');
+  positions=[];renderPos();refreshBal();updateTradeDashboard();tlog('KILL','Tudo fechado','lr');
 }
 
-async function manualClose(idx){if(!positions[idx])return;if(!confirm('Fechar '+positions[idx].pair+'?'))return;const p=positions[idx];recordTrade(p,'MANUAL',p.qtyUsdt*(p.pnl/100));await closePos(p,1,'MANUAL');positions.splice(idx,1);renderPos();updateDashboard()}
+async function manualClose(idx){if(!positions[idx])return;if(!confirm('Fechar '+positions[idx].pair+'?'))return;const p=positions[idx];recordTrade(p,'MANUAL',p.qtyUsdt*(p.pnl/100));await closePos(p,1,'MANUAL');positions.splice(idx,1);renderPos();updateTradeDashboard()}
 
 // ── Render Positions ──
 function renderPos(){
@@ -4089,7 +4102,7 @@ function renderPos(){
 }
 
 // ── Dashboard PnL ──
-function updateDashboard(){
+function updateTradeDashboard(){
   const wins=tradeHistory.filter(t=>t.pnlUsd>0).length,losses=tradeHistory.filter(t=>t.pnlUsd<=0).length;
   const total=wins+losses,wr=total?((wins/total)*100).toFixed(0)+'%':'—';
   const totalPnl=tradeHistory.reduce((s,t)=>s+t.pnlUsd,0);
@@ -4137,7 +4150,7 @@ function renderHistory(){
     return '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #1a1a1a;font-family:var(--font-mono);font-size:11px"><div><span style="color:'+(t.side==='BUY'?'var(--green)':'var(--red)')+'">'+t.side+'</span> <span style="color:var(--text-primary)">'+t.pair+'</span> <span style="color:var(--text-muted);font-size:9px">'+t.reason+'</span></div><div style="text-align:right"><div style="color:'+c+'">'+s+'$'+t.pnlUsd.toFixed(2)+'</div><div style="color:var(--text-muted);font-size:9px">'+dt+'</div></div></div>'
   }).join('');
 }
-function clearHistory(){if(!confirm('Limpar histórico?'))return;tradeHistory=[];saveHistory();renderHistory();updateDashboard()}
+function clearHistory(){if(!confirm('Limpar histórico?'))return;tradeHistory=[];saveHistory();renderHistory();updateTradeDashboard()}
 
 // ── Telegram ──
 async function sendTG(msg){if(!document.getElementById('tgTG').classList.contains('on'))return;const t=document.getElementById('tgToken').value.trim(),c=document.getElementById('tgChat').value.trim();if(!t||!c)return;try{await fetch('https://api.telegram.org/bot'+t+'/sendMessage',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({chat_id:c,text:'🤖 ESPECULADOR\n\n'+msg})})}catch(e){}}
