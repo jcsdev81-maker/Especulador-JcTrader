@@ -1738,7 +1738,7 @@ FASE 3 — FALHA (GATILHO): DIF se aproxima da DEA e REJEITA — NÃO cruza de v
 • DIF e DEA ABAIXO do zero na falha = BOM ★★ (momentum emergindo, probabilidade boa mas não confirmada)
 • DIF e DEA na zona do zero = MODERADO (indefinição, precisa mais confluência)
 
-FASE 4 — ENTRADA CIRÚRGICA: Entrada na região de valor (Fibo + POC + DEMA72). Stop abaixo do último fundo estrutural (curto). Alvos: TP1 100% extensão Fibo, TP2 161.8%, TP3 200%+. R:R mínimo 3:1. Se o GATE diário confirmar depois (DIF cruza zero no diário), o R:R potencial sobe para 6:1, 8:1+.
+FASE 4 — ENTRADA CIRÚRGICA: Entrada na REGIÃO DE VALOR (confluência Fibo LOG 0.618-0.786 + POC + DEMA72). Stop abaixo do último fundo estrutural. REGIÕES DE ALVO (extensão Fibo LOG): Região TP1: 100%-127.2%, Região TP2: 141.4%-161.8%, Região TP3: 227%+. R:R mínimo 3:1. Se GATE diário confirmar depois, R:R potencial 6:1+.
 
 ═══ SETUP SHORT (espelho perfeito, após grande alta) ═══
 
@@ -1750,7 +1750,7 @@ FASE 3 — FALHA (GATILHO): DIF se aproxima da DEA por baixo e REJEITA — NÃO 
 • DIF e DEA ABAIXO do zero = EXCELENTE ★★★ (vendedor confirmado)
 • DIF e DEA ACIMA do zero = BOM ★★ (vendedor emergindo)
 
-FASE 4 — ENTRADA SHORT: Entrada na região de valor (topo da retração). Stop acima do último topo estrutural. R:R mínimo 3:1.
+FASE 4 — ENTRADA SHORT: Entrada na REGIÃO DE VALOR (topo da retração — confluência Fibo LOG + POC + DEMA72). Stop acima do último topo estrutural. REGIÕES DE ALVO: Região TP1: ext 100%-127.2%, Região TP2: ext 141.4%-161.8%, Região TP3: ext 227%+. R:R mínimo 3:1.
 
 ═══ REGRAS INVIOLÁVEIS DA FALHA ═══
 • A FALHA não é o cruzamento. A FALHA é a REJEIÇÃO do cruzamento na retração.
@@ -1788,7 +1788,7 @@ PERSONALIDADE: Trader brasileiro veterano, 20+ anos. Chama "operador". Direto, s
 
 7 PILARES (analise CADA UM com os dados fornecidos):
 1)ELLIOTT: Onde estamos no ciclo? Use topos/fundos pra inferir. Final onda 5=reversão, onda 3=mais forte.
-2)FIBONACCI: Preço está na GoldenZone (0.618-0.786)? Se sim, confluência forte. Use os níveis calculados.
+2)FIBONACCI LOG: Retração E extensão em escala LOGARÍTMICA. Preço está na GoldenZone LOG (0.618-0.786)? Extensão LOG: 100%, 127.2%, 141.4%, 161.8%, 227%. REGIÕES de alvo, não preços fixos.
 3)MACD 12/72/35: GATE diário obrigatório. Line>0=bull, <0=bear. No 4H: analise DIF vs DEA vs Histograma. Histograma virando? DIF se aproximando da DEA? ★★★ FALHA DE CRUZAMENTO e PADRÃO DE ABSORÇÃO são prioridade máxima.
 4)DOW: Topos/fundos ascendentes ou descendentes? Preço NÃO renova mínima/máxima = primeiro sinal de reversão.
 5)WYCKOFF: Preço não renova mínima + segura acima EMA lenta + volume absorvido = SPRING (compra). Preço não renova máxima + segura abaixo EMA lenta = UTAD (venda). O smart money posiciona ANTES.
@@ -2292,15 +2292,17 @@ async function fetchMarketData(symbol,interval){
     else dow='LATERAL (sem definição)';
   }
 
-  // ═══ FIBONACCI ═══
+  // ═══ FIBONACCI LOGARÍTMICO (retração + extensão) ═══
   var sH=sw.h.length?sw.h[sw.h.length-1].p:Math.max.apply(null,h.slice(-50));
   var sL=sw.l.length?sw.l[sw.l.length-1].p:Math.min.apply(null,l.slice(-50));
-  var rng=sH-sL;
-  var f236=sH-rng*0.236,f382=sH-rng*0.382,f500=sH-rng*0.5,f618=sH-rng*0.618,f786=sH-rng*0.786;
+  var lnH=Math.log(sH),lnL=Math.log(sL),lnRng=lnH-lnL;
+  var fib=function(r){return Math.exp(lnH-lnRng*r)};
+  var f236=fib(0.236),f382=fib(0.382),f500=fib(0.5),f618=fib(0.618),f786=fib(0.786);
+  var fibExt=function(r){return Math.exp(lnL+lnRng*r)};
+  var e100=fibExt(1.0),e1272=fibExt(1.272),e1414=fibExt(1.414),e1618=fibExt(1.618),e2270=fibExt(2.270),e2414=fibExt(2.414);
   var gzStatus=p<=f618&&p>=f786?'SIM — preço DENTRO da Golden Zone':
                p>f618&&p<=f500?'PARCIAL — entre 0.5 e 0.618':
                p<f786?'ABAIXO da Golden Zone (retração profunda)':'NÃO — preço acima da Golden Zone';
-  // Distância até GZ
   var distGZ618=((p-f618)/p*100).toFixed(2);
 
   // ═══ VOLUME ═══
@@ -2335,8 +2337,9 @@ async function fetchMarketData(symbol,interval){
     dema72:dema72.toFixed(dec),demaStatus:demaStatus,demaDist:demaDist,
     // DOW
     dow:dow,highs:rh.map(function(s){return s.p.toFixed(dec)}),lows:rl.map(function(s){return s.p.toFixed(dec)}),
-    // FIBONACCI
+    // FIBONACCI (LOG)
     fibH:sH.toFixed(dec),fibL:sL.toFixed(dec),f236:f236.toFixed(dec),f382:f382.toFixed(dec),f500:f500.toFixed(dec),f618:f618.toFixed(dec),f786:f786.toFixed(dec),gz:gzStatus,distGZ618:distGZ618,
+    e100:e100.toFixed(dec),e1272:e1272.toFixed(dec),e1414:e1414.toFixed(dec),e1618:e1618.toFixed(dec),e2270:e2270.toFixed(dec),e2414:e2414.toFixed(dec),
     // VOLUME + CANDLE
     volStatus:volStatus,candle:candle
   };
@@ -2363,7 +2366,8 @@ async function analisarPar(){
       +'★Falha'+tf+': '+d.macdFailTF+(d.macdFailBarsTF!==null?' ('+d.macdFailBarsTF+'bars)':'')+' '+d.macdFailDescTF+' ZONA:'+d.macdFailZonaTF+' FORÇA:'+d.macdFailForcaTF+'\n'
       +'DEMA72='+d.dema72+' '+d.demaStatus+' dist:'+d.demaDist+'%\n'
       +'DOW: '+d.dow+' T:'+d.highs.join(',')+' F:'+d.lows.join(',')+'\n'
-      +'FIBO('+d.fibH+'→'+d.fibL+'): .382='+d.f382+' .5='+d.f500+' .618='+d.f618+' .786='+d.f786+' GZ:'+d.gz+'\n'
+      +'FIBO LOG('+d.fibH+'→'+d.fibL+'): .382='+d.f382+' .5='+d.f500+' .618='+d.f618+' .786='+d.f786+' GZ:'+d.gz+'\n'
+      +'EXT LOG: 100%='+d.e100+' 127.2%='+d.e1272+' 141.4%='+d.e1414+' 161.8%='+d.e1618+' 227%='+d.e2270+'\n'
       +'VOL: '+d.volStatus+' | CANDLE: '+d.candle+'\n'
       +'Analise 7 pilares. GATE DIÁRIO='+d.macdGate+' (contexto macro, não bloqueio). 4H é o GATILHO: se confluência ★★★+ no 4H → pode antecipar entrada R:R≥3:1 mesmo com GATE contra. Se GATE confirmar depois → R:R sobe. Informe ambos cenários.\nResposta: SOMENTE o JSON, nada mais. Sem texto antes ou depois. Sem markdown. Apenas JSON puro.';
     var text=await callGemini(SYSTEM_PROMPT,[{role:'user',content:prompt}],8000);
@@ -3650,7 +3654,8 @@ async function sendMessage(){
         +'★Falha'+tfLabel+':'+d.macdFailTF+' '+d.macdFailDescTF+'\n'
         +'DEMA72='+d.dema72+' '+d.demaStatus+'\n'
         +'DOW:'+d.dow+' T:'+d.highs.join(',')+' F:'+d.lows.join(',')+'\n'
-        +'FIBO('+d.fibH+'→'+d.fibL+'): .618='+d.f618+' .786='+d.f786+' GZ:'+d.gz+'\n'
+        +'FIBO LOG('+d.fibH+'→'+d.fibL+'): .618='+d.f618+' .786='+d.f786+' GZ:'+d.gz+'\n'
+        +'EXT LOG: 100%='+d.e100+' 127.2%='+d.e1272+' 161.8%='+d.e1618+'\n'
         +'VOL:'+d.volStatus+' CANDLE:'+d.candle+'\n'
         +'Analise com dados reais. 4H é gatilho, GATE diário é contexto. Confluência ★★★+ no 4H pode antecipar entrada. JSON obrigatório.';
     }catch(e){/* Se falhar, envia sem dados */}
